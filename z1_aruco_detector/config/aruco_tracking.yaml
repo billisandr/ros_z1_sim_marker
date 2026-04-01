@@ -1,0 +1,126 @@
+# =============================================================================
+# ArUco Tracking Simulation — Configuration
+# =============================================================================
+# Edit this file and rebuild (or docker cp) to change simulation behaviour.
+# All values are loaded at launch time via ROS parameter server.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# ArUco Marker Detection
+# -----------------------------------------------------------------------------
+aruco:
+  # OpenCV ArUco dictionary to use.
+  # Options: DICT_4X4_50, DICT_4X4_100, DICT_5X5_50, DICT_6X6_250, DICT_7X7_1000
+  dictionary: DICT_4X4_50
+
+  # List of marker IDs to detect. The arm will track the first one in the list.
+  # To track multiple markers, add more IDs — poses published on /aruco/marker_pose_<id>
+  marker_ids: [0]
+
+  # Physical size of the printed marker (metres), border included.
+  # Must match the model.sdf box dimensions.
+  marker_size: 0.15
+
+  # ID of the marker the arm should follow (must be in marker_ids).
+  tracking_id: 0
+
+
+# -----------------------------------------------------------------------------
+# Camera
+# -----------------------------------------------------------------------------
+camera:
+  # Camera mode:
+  #   fixed        — static camera at a fixed pose in the world
+  #   end_effector — camera attached to the Z1 wrist (link06)
+  mode: end_effector
+
+  # Fixed camera pose in world frame [x, y, z, roll, pitch, yaw] (metres / radians)
+  # Only used when mode: fixed
+  # Default: 1.5m in front of arm, 1.2m high, angled ~25 deg down, facing arm
+  fixed_pose: [1.5, 0.0, 1.2, 0.0, 0.436, 3.1415]
+
+  # Offset from link06 (wrist) when mode: end_effector [x, y, z] in metres
+  # x = forward along the tool axis (pointing away from wrist)
+  end_effector_offset: [0.10, 0.0, 0.0]
+
+  # Camera resolution
+  width: 640
+  height: 480
+
+  # Camera frame rate (Hz)
+  fps: 30
+
+  # Horizontal field of view (radians). D435 spec ~69 deg = 1.2043 rad
+  fov: 1.2043
+
+  # Publish a debug image with detected markers overlaid (/aruco/debug_image)
+  show_debug_image: true
+
+
+# -----------------------------------------------------------------------------
+# Marker Motion
+# -----------------------------------------------------------------------------
+marker:
+  # Motion pattern for the ArUco marker object in Gazebo.
+  # Options: sinusoidal, circular, figure8, static
+  motion_pattern: sinusoidal
+
+  # Center position of the motion path in world frame (metres)
+  center: [0.55, 0.0, 0.50]
+
+  # Motion amplitude (metres) per axis
+  amplitude_y: 0.20    # side-to-side
+  amplitude_z: 0.10    # up-down
+
+  # Motion frequency (Hz) — how fast the marker moves
+  frequency: 0.2
+
+  # Circular / figure8 radius (metres) — used when motion_pattern is circular or figure8
+  radius: 0.20
+
+  # Update rate for marker position commands (Hz)
+  update_rate: 50.0
+
+  # If true, marker is affected by Gazebo gravity (falls unless supported)
+  gravity: false
+
+
+# -----------------------------------------------------------------------------
+# Arm Tracker
+# -----------------------------------------------------------------------------
+arm_tracker:
+  # Cartesian end-effector speed (m/s). Keep <= 0.5 for safe simulation.
+  cartesian_speed: 0.3
+
+  # Rate at which tracking commands are sent to sim_ctrl (Hz). Max ~50.
+  update_rate: 50.0
+
+  # Offset applied to the marker pose before sending to the arm (metres).
+  # Prevents the end-effector from colliding with the marker.
+  # [x, y, z] offset in world frame
+  target_offset: [-0.05, 0.0, 0.0]
+
+  # Safe workspace limits for the end-effector (metres, world frame).
+  # Commands outside these bounds are clamped.
+  workspace:
+    x: [0.20, 0.65]
+    y: [-0.35, 0.35]
+    z: [0.10, 0.75]
+
+  # If false, arm tracker is loaded but does not send commands (useful for testing detection only)
+  enabled: true
+
+
+# -----------------------------------------------------------------------------
+# Simulation
+# -----------------------------------------------------------------------------
+simulation:
+  # Start Gazebo paused (press Play in GUI or use /gazebo/unpause_physics service)
+  paused: true
+
+  # Show Gazebo GUI window
+  gui: true
+
+  # Show Gazebo in headless mode (no rendering, faster — overrides gui: true)
+  headless: false

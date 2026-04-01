@@ -30,18 +30,26 @@ class ArmTrackerNode:
     def __init__(self):
         rospy.init_node('arm_tracker', anonymous=False)
 
-        self.update_rate    = rospy.get_param('~update_rate',   50.0)   # Hz
-        self.speed          = rospy.get_param('~cartesian_speed', 0.3)  # m/s
+        self.update_rate     = rospy.get_param('arm_tracker/update_rate',     50.0)
+        self.speed           = rospy.get_param('arm_tracker/cartesian_speed', 0.3)
+        self.enabled         = rospy.get_param('arm_tracker/enabled',         True)
+        offset               = rospy.get_param('arm_tracker/target_offset',  [-0.05, 0.0, 0.0])
+        self.offset_x        = offset[0]
+        self.offset_y        = offset[1]
+        self.offset_z        = offset[2]
         self.marker_detected = False
-        self.latest_pose    = None
+        self.latest_pose     = None
 
-        # Arm workspace limits (metres, in world frame relative to arm base)
-        self.x_min = rospy.get_param('~x_min', 0.20)
-        self.x_max = rospy.get_param('~x_max', 0.65)
-        self.y_min = rospy.get_param('~y_min', -0.35)
-        self.y_max = rospy.get_param('~y_max',  0.35)
-        self.z_min = rospy.get_param('~z_min',  0.10)
-        self.z_max = rospy.get_param('~z_max',  0.75)
+        ws = rospy.get_param('arm_tracker/workspace', {})
+        self.x_min = ws.get('x', [0.20, 0.65])[0]
+        self.x_max = ws.get('x', [0.20, 0.65])[1]
+        self.y_min = ws.get('y', [-0.35, 0.35])[0]
+        self.y_max = ws.get('y', [-0.35, 0.35])[1]
+        self.z_min = ws.get('z', [0.10, 0.75])[0]
+        self.z_max = ws.get('z', [0.10, 0.75])[1]
+
+        if not self.enabled:
+            rospy.loginfo("[arm_tracker] Tracking disabled in config — running in observe mode.")
 
         rospy.Subscriber('/aruco/marker_pose',     PoseStamped, self._pose_cb,     queue_size=1)
         rospy.Subscriber('/aruco/marker_detected', Bool,        self._detected_cb, queue_size=1)
@@ -70,13 +78,13 @@ class ArmTrackerNode:
         rate = rospy.Rate(self.update_rate)
 
         while not rospy.is_shutdown():
-            if self.marker_detected and self.latest_pose is not None:
+            if self.enabled and self.marker_detected and self.latest_pose is not None:
                 p = self.latest_pose.pose.position
 
-                # Clamp to safe workspace
-                x = self._clamp(p.x, self.x_min, self.x_max)
-                y = self._clamp(p.y, self.y_min, self.y_max)
-                z = self._clamp(p.z, self.z_min, self.z_max)
+                # Apply offset so end-effector stops before reaching the marker
+                x = self._clamp(p.x + self.offset_x, self.x_min, self.x_max)
+                y = self._clamp(p.y + self.offset_y, self.y_min, self.y_max)
+                z = self._clamp(p.z + self.offset_z, self.z_min, self.z_max)
 
                 if SDK_AVAILABLE and self.arm is not None:
                     # Build 6D Cartesian target: [roll, pitch, yaw, x, y, z]

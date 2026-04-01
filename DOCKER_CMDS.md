@@ -52,6 +52,36 @@ docker run -it --rm -v <host-path>:<container-path> <image-name>
 docker run -d --name <container-name> <image-name>
 ```
 
+## Volumes / Live File Sync
+
+Bind mounts map a host directory into the container in real time.
+Any file edited on the host is instantly visible inside — no rebuild or docker cp needed.
+
+```bash
+# Mount a single directory
+docker run -it --rm \
+  -v <host-path>:<container-path> \
+  <image-name>
+
+# Mount multiple directories (one -v per path)
+docker run -it --rm \
+  -v /home/sense/ros_docker/z1_aruco_detector:/home/rosuser/catkin_ws/src/z1_aruco_detector \
+  -v /home/sense/ros_docker/z1_arm_tracker:/home/rosuser/catkin_ws/src/z1_arm_tracker \
+  -v /home/sense/ros_docker/unitree_ros/unitree_gazebo/launch:/home/rosuser/catkin_ws/src/unitree_ros/unitree_gazebo/launch \
+  -v /home/sense/ros_docker/unitree_ros/unitree_gazebo/worlds:/home/rosuser/catkin_ws/src/unitree_ros/unitree_gazebo/worlds \
+  ros-z1-aruco bash
+
+# Mount as read-only (container cannot write back to host)
+docker run -it --rm \
+  -v <host-path>:<container-path>:ro \
+  <image-name>
+```
+
+> Bind mounts override files baked into the image at those paths.
+> Keep host files as the source of truth.
+
+---
+
 ## Enter (exec into running container)
 
 ```bash

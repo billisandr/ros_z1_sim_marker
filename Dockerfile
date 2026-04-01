@@ -16,8 +16,13 @@ RUN apt-get update && apt-get install -y \
     iputils-ping \
     net-tools \
     psmisc \
-    # Librairies pour le support graphique
-    libgl1-mesa-glx \
+    # OpenGL — libglvnd vendor-neutral dispatch routes GL to NVIDIA or Mesa at runtime
+    libglvnd0 \
+    libgl1 \
+    libglx0 \
+    libegl1 \
+    libgles2 \
+    libglvnd-dev \
     libgl1-mesa-dri \
     mesa-utils \
     x11-apps \
@@ -59,7 +64,8 @@ ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
 RUN groupadd --gid $USER_GID $USERNAME \
-    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME
+    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
+    && usermod -aG video $USERNAME
 
 # Copy and build sdk_z1
 COPY --chown=$USERNAME:$USERNAME sdk_z1 /home/$USERNAME/sdk_z1
@@ -101,9 +107,17 @@ RUN echo "source /opt/ros/noetic/setup.bash" >> $HOME/.bashrc && \
     echo "source $HOME/catkin_ws/devel/setup.bash" >> $HOME/.bashrc && \
     echo 'export PS1="\[\033[01;36m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> $HOME/.bashrc
 
-# Variables d'environnement pour le support GUI
+# GUI / GPU environment
 ENV QT_X11_NO_MITSHM=1
-ENV LIBGL_ALWAYS_INDIRECT=0
+# Tell NVIDIA container runtime to expose the GPU and its GL libraries
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=graphics,display,utility
+# Force Mesa software renderer (llvmpipe).
+# The Intel GPU (Meteor Lake / 0x7d67) is too new for Mesa 21 in Ubuntu 20.04,
+# and NVIDIA GLX rejects indirect X11 connections from Docker.
+# llvmpipe provides stable OpenGL 3.1 for Gazebo and RViz.
+ENV LIBGL_ALWAYS_SOFTWARE=1
+ENV MESA_GL_VERSION_OVERRIDE=3.3
 
 WORKDIR $HOME
 

@@ -13,7 +13,7 @@ from sensor_msgs.msg import Image, CameraInfo
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Bool
 import tf2_ros
-import tf2_geometry_msgs
+import tf2_geometry_msgs  # noqa: F401 — registers PoseStamped with tf2's type registry
 
 
 class ArucoDetectorNode:
@@ -23,12 +23,23 @@ class ArucoDetectorNode:
         self.bridge = CvBridge()
         self.camera_matrix = None
         self.dist_coeffs = None
-        self.marker_size = rospy.get_param('~marker_size', 0.15)  # metres, matches model.sdf
-        self.target_id = rospy.get_param('~marker_id', 0)
+        self.marker_size = rospy.get_param('aruco/marker_size', 0.15)
+        self.target_id   = rospy.get_param('aruco/tracking_id', 0)
+        self.show_debug  = rospy.get_param('camera/show_debug_image', True)
 
-        self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+        dict_name = rospy.get_param('aruco/dictionary', 'DICT_4X4_50')
+        dict_map = {
+            'DICT_4X4_50':   cv2.aruco.DICT_4X4_50,
+            'DICT_4X4_100':  cv2.aruco.DICT_4X4_100,
+            'DICT_5X5_50':   cv2.aruco.DICT_5X5_50,
+            'DICT_6X6_250':  cv2.aruco.DICT_6X6_250,
+            'DICT_7X7_1000': cv2.aruco.DICT_7X7_1000,
+        }
+        aruco_dict_id = dict_map.get(dict_name, cv2.aruco.DICT_4X4_50)
+        self.aruco_dict   = cv2.aruco.getPredefinedDictionary(aruco_dict_id)
         self.aruco_params = cv2.aruco.DetectorParameters()
-        self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
+        self.detector     = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
+        rospy.loginfo(f"[aruco_detector] Using dictionary: {dict_name}, tracking ID: {self.target_id}")
 
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
