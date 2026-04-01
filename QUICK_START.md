@@ -26,25 +26,64 @@ docker run -it --rm \
   ros-z1
 ```
 
+# If rendering is slow
+
+Option A — Use NVIDIA GPU (best performance)
+First check if nvidia-container-toolkit is installed on the host:
+
+```bash
+nvidia-smi
+docker run --gpus all --rm nvidia/cuda:11.0-base nvidia-smi
+```
+
+If that works, run the container with:
+
+```bash
+docker run -it --rm \
+  --name z1_aruco \
+  -e DISPLAY=$DISPLAY \
+  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  --gpus all \
+  -e NVIDIA_DRIVER_CAPABILITIES=all \
+  ros-z1-aruco
+```
+
+Option B — Force software rendering (quickest fix, no GPU needed)
+
+```bash
+docker run -it --rm \
+  --name z1_aruco \
+  -e DISPLAY=$DISPLAY \
+  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  -e LIBGL_ALWAYS_SOFTWARE=1 \
+  -e MESA_GL_VERSION_OVERRIDE=3.3 \
+  ros-z1-aruco
+```
+
 ---
 
 ## 4. Verify the Environment (inside container)
 
 **Check ROS is sourced:**
+
 ```bash
 echo $ROS_PACKAGE_PATH
 ```
+
 Should list paths including `catkin_ws` and `/opt/ros/noetic`.
 
 **Check Unitree packages are found:**
+
 ```bash
 rospack find z1_description
 rospack find unitree_gazebo
 rospack find unitree_legged_msgs
 ```
+
 All three should return paths without errors.
 
 **Check Z1 binaries:**
+
 ```bash
 ls ~/z1_controller/build/z1_ctrl
 ls ~/sdk_z1/build/

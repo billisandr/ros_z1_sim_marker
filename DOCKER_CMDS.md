@@ -1,5 +1,19 @@
 # Docker Commands Reference
 
+## Inspect
+
+```bash
+# List images
+docker images
+
+# List containers
+docker ps -a
+
+# See usage stats
+docker stats 
+docker stats <container-name> 
+```
+
 ## Build
 
 ```bash
