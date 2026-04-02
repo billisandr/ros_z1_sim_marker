@@ -63,8 +63,8 @@ camera:
 # -----------------------------------------------------------------------------
 marker:
   # Motion pattern for the ArUco marker object in Gazebo.
-  # Options: sinusoidal, circular, figure8, static
-  motion_pattern: sinusoidal
+  # Options: sinusoidal, circular, figure8, square, static
+  motion_pattern: square
 
   # Center position of the motion path in world frame (metres)
   center: [0.70, 0.0, 0.50]

@@ -50,6 +50,19 @@ class MarkerMoverNode:
             y = self.radius * math.sin(omega * t)
             z = self.center_z + self.radius * math.sin(2.0 * omega * t) / 2.0
 
+        elif self.motion_pattern == 'square':
+            # One full cycle = 4 sides. Phase within current side: 0..1
+            period = 1.0 / self.frequency
+            phase = (t % period) / period        # 0..1 over full cycle
+            side = int(phase * 4)                # 0,1,2,3
+            s = (phase * 4) - side               # 0..1 within each side
+            corners_y = [ self.amplitude_y, -self.amplitude_y, -self.amplitude_y,  self.amplitude_y]
+            corners_z = [ self.amplitude_z,  self.amplitude_z, -self.amplitude_z, -self.amplitude_z]
+            next_side = (side + 1) % 4
+            x = self.center_x
+            y = corners_y[side] + s * (corners_y[next_side] - corners_y[side])
+            z = self.center_z + corners_z[side] + s * (corners_z[next_side] - corners_z[side])
+
         else:  # static
             x = self.center_x
             y = 0.0
