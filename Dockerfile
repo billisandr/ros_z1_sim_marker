@@ -108,6 +108,7 @@ RUN echo "source /opt/ros/noetic/setup.bash" >> $HOME/.bashrc && \
     echo 'export PS1="\[\033[01;36m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> $HOME/.bashrc
 
 # GUI / GPU environment
+ENV LD_LIBRARY_PATH=/home/rosuser/sdk_z1/lib
 ENV QT_X11_NO_MITSHM=1
 # Tell NVIDIA container runtime to expose the GPU and its GL libraries
 ENV NVIDIA_VISIBLE_DEVICES=all

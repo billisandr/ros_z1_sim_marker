@@ -86,13 +86,17 @@ class ArucoDetectorNode:
                 rvec = rvecs[0][0]
                 tvec = tvecs[0][0]
 
-                # Build PoseStamped in camera frame
+                # Build PoseStamped in camera frame.
+                # camera_color_optical_frame has rpy=0,0,0 relative to link06:
+                #   frame X = forward, frame Y = left, frame Z = up
+                # OpenCV tvec convention: tvec[2]=depth(forward), tvec[0]=right, tvec[1]=down
+                # Remap: depth→X, right→-Y, down→-Z
                 pose_camera = PoseStamped()
                 pose_camera.header.stamp = msg.header.stamp
                 pose_camera.header.frame_id = 'camera_color_optical_frame'
-                pose_camera.pose.position.x = tvec[0]
-                pose_camera.pose.position.y = tvec[1]
-                pose_camera.pose.position.z = tvec[2]
+                pose_camera.pose.position.x = tvec[2]   # depth  → frame X (forward)
+                pose_camera.pose.position.y = -tvec[0]  # right  → frame -Y (left axis)
+                pose_camera.pose.position.z = -tvec[1]  # down   → frame -Z (up axis)
 
                 rot_mat, _ = cv2.Rodrigues(rvec)
                 quat = self._rotation_matrix_to_quaternion(rot_mat)

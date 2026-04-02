@@ -67,7 +67,7 @@ marker:
   motion_pattern: sinusoidal
 
   # Center position of the motion path in world frame (metres)
-  center: [0.55, 0.0, 0.50]
+  center: [0.70, 0.0, 0.50]
 
   # Motion amplitude (metres) per axis
   amplitude_y: 0.20    # side-to-side
@@ -91,15 +91,26 @@ marker:
 # -----------------------------------------------------------------------------
 arm_tracker:
   # Cartesian end-effector speed (m/s). Keep <= 0.5 for safe simulation.
-  cartesian_speed: 0.3
+  cartesian_speed: 0.1
+
+  # Proportional gain for direction control: error (m) * gain = direction [-1, 1].
+  # gain=3 → full speed at 0.33 m error, slows proportionally as arm approaches target.
+  proportional_gain: 2.0
 
   # Rate at which tracking commands are sent to sim_ctrl (Hz). Max ~50.
   update_rate: 50.0
 
-  # Offset applied to the marker pose before sending to the arm (metres).
-  # Prevents the end-effector from colliding with the marker.
-  # [x, y, z] offset in world frame
-  target_offset: [-0.05, 0.0, 0.0]
+  # Fixed forward reach (metres, world X) maintained during 2D tracking.
+  # The arm only follows the marker's Y (lateral) and Z (vertical) — depth is fixed.
+  fixed_x: 0.25
+
+  # Low-pass filter coefficient for the Cartesian target (0.0=frozen, 1.0=instant).
+  # Lower values = slower, smoother arm motion. Start at 0.05, raise if too sluggish.
+  smoothing_alpha: 0.10
+
+  # Offset applied on top of fixed_x / marker Y,Z before sending to the arm (metres).
+  # [x, y, z] — typically zero for 2D tracking
+  target_offset: [0.0, 0.0, 0.0]
 
   # Safe workspace limits for the end-effector (metres, world frame).
   # Commands outside these bounds are clamped.
