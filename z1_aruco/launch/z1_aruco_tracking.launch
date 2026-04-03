@@ -2,7 +2,7 @@
     <env name="GAZEBO_MODEL_PATH" value="$(find z1_aruco)/models:$(optenv GAZEBO_MODEL_PATH)"/>
 
     <!-- Load user config into ROS parameter server — nodes read params from here at runtime -->
-    <rosparam file="$(find z1_aruco_detector)/config/aruco_tracking.yaml" command="load"/>
+    <rosparam file="$(find z1_aruco)/config/aruco_tracking.yaml" command="load"/>
 
     <arg name="rname"          default="z1"/>
     <arg name="robot_path"     value="(find $(arg rname)_description)"/>

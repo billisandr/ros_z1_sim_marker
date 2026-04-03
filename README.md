@@ -260,7 +260,7 @@ Two modes share the same detector and tracker — only the image source changes.
 All simulation parameters load from a single file at launch time:
 
 ```txt
-z1_aruco_detector/config/aruco_tracking.yaml
+z1_aruco/config/aruco_tracking.yaml
 ```
 
 Edit this file on the host and relaunch — no rebuild required when using bind mounts.

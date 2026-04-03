@@ -28,8 +28,8 @@ docker build -t ros-z1 .
 # Hot-reload a Python node or config without rebuilding
 docker cp z1_aruco_detector/src/aruco_detector_node.py \
   ros-z1:/home/rosuser/catkin_ws/src/z1_aruco_detector/src/
-docker cp z1_aruco_detector/config/aruco_tracking.yaml \
-  ros-z1:/home/rosuser/catkin_ws/src/z1_aruco_detector/config/
+docker cp z1_aruco/config/aruco_tracking.yaml \
+  ros-z1:/home/rosuser/catkin_ws/src/z1_aruco/config/
 # Then restart the affected node inside the container:
 # rosnode kill /aruco_detector && rosrun z1_aruco_detector aruco_detector_node.py
 ```
@@ -137,7 +137,7 @@ roslaunch z1_aruco z1_aruco_tracking.launch camera_mode:=fixed paused:=false
 All simulation behaviour is controlled by a single YAML file:
 
 ```txt
-z1_aruco_detector/config/aruco_tracking.yaml
+z1_aruco/config/aruco_tracking.yaml
 ```
 
 Loaded onto the ROS parameter server at launch. Key parameters:
@@ -464,8 +464,8 @@ aruco:
 Hot-reload without rebuilding:
 
 ```bash
-docker cp z1_aruco_detector/config/aruco_tracking.yaml \
-  ros-z1-real:/home/rosuser/catkin_ws/src/z1_aruco_detector/config/aruco_tracking.yaml
+docker cp z1_aruco/config/aruco_tracking.yaml \
+  ros-z1-real:/home/rosuser/catkin_ws/src/z1_aruco/config/aruco_tracking.yaml
 # restart the node inside the container:
 rosnode kill /aruco_detector
 rosrun z1_aruco_detector aruco_detector_node.py

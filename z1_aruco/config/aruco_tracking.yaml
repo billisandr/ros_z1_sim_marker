@@ -16,7 +16,7 @@ aruco:
 
   # List of marker IDs to detect. The arm will track the first one in the list.
   # To track multiple markers, add more IDs — poses published on /aruco/marker_pose_<id>
-  marker_ids: [0]
+  marker_ids: [0, 1]
 
   # Physical size of the printed marker (metres), border included.
   # Must match the model.sdf box dimensions.
@@ -38,7 +38,7 @@ aruco:
   error_correction_rate: 0.6
 
   # ID of the marker the arm should follow (must be in marker_ids).
-  tracking_id: 0
+  tracking_id: 1
 
 
 # -----------------------------------------------------------------------------
@@ -106,11 +106,11 @@ marker:
 # -----------------------------------------------------------------------------
 arm_tracker:
   # Cartesian end-effector speed (m/s). Keep <= 0.5 for safe simulation.
-  cartesian_speed: 0.1
+  cartesian_speed: 0.2
 
   # Proportional gain for direction control: error (m) * gain = direction [-1, 1].
   # gain=3 → full speed at 0.33 m error, slows proportionally as arm approaches target.
-  proportional_gain: 2.0
+  proportional_gain: 2.5
 
   # Rate at which tracking commands are sent to sim_ctrl (Hz). Max ~50.
   update_rate: 50.0
@@ -131,11 +131,40 @@ arm_tracker:
   # Commands outside these bounds are clamped.
   workspace:
     x: [0.20, 0.65]
-    y: [-0.35, 0.35]
+    y: [-0.40, 0.40]
     z: [0.10, 0.75]
 
   # If false, arm tracker is loaded but does not send commands (useful for testing detection only)
   enabled: true
+
+  # --- Wrist orientation tracking ---
+  # When true, wrist joints (4-6) rotate to face the marker once the arm has settled.
+  # Position tracking (joints 1-3) is unaffected — the two loops are fully decoupled.
+  track_orientation: false
+
+  # Low-pass filter for wrist orientation (same scale as smoothing_alpha).
+  # Lower = slower, more stable wrist rotation.
+  orientation_alpha: 0.10
+
+  # Position stability gate: wrist control only engages when the arm is settled.
+  # stability_threshold — max total position change per tick (metres) to count as stable.
+  # stability_ticks     — how many consecutive stable ticks before wrist engages.
+  stability_threshold: 0.010  # ~10 mm/tick at 50 Hz
+  stability_ticks: 15         # ~0.3 s of stability required
+
+
+# -----------------------------------------------------------------------------
+# Z1 Joint Limits
+# -----------------------------------------------------------------------------
+# Physical joint range limits for the Unitree Z1 Pro arm (6-DOF, 740 mm reach).
+# Values in radians — degree equivalents shown in comments.
+joint_limits:
+  j1: [-2.618,  2.618]   # ±150 deg  — base rotation
+  j2: [ 0.000,  3.142]   #  0–180 deg — shoulder lift
+  j3: [-2.880,  0.000]   # -165–0 deg — elbow
+  j4: [-1.396,  1.396]   # ±80 deg   — wrist roll
+  j5: [-1.484,  1.484]   # ±85 deg   — wrist pitch
+  j6: [-2.793,  2.793]   # ±160 deg  — wrist yaw
 
 
 # -----------------------------------------------------------------------------

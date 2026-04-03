@@ -132,7 +132,7 @@ roslaunch z1_aruco z1_aruco_tracking.launch \
 ```
 
 > For marker motion, arm tracking speed, camera parameters, and workspace limits,
-> edit `z1_aruco_detector/config/aruco_tracking.yaml` on the host and relaunch.
+> edit `z1_aruco/config/aruco_tracking.yaml` on the host and relaunch.
 > Changes to the mounted config file take effect on the next `roslaunch`.
 
 ### z1.launch

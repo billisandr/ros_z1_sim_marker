@@ -2,7 +2,7 @@
 """
 Marker Mover Node
 Moves the ArUco marker model in Gazebo along a configurable path.
-Motion pattern is set in z1_aruco_detector/config/aruco_tracking.yaml.
+Motion pattern is set in z1_aruco/config/aruco_tracking.yaml.
 """
 
 import rospy

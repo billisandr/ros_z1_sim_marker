@@ -63,6 +63,12 @@ class ArmTrackerNode:
         # Low-pass filter on Cartesian target: 0.0=frozen, 1.0=instant, 0.05=slow/smooth
         self.alpha = rospy.get_param('arm_tracker/smoothing_alpha', 0.05)
 
+        # Wrist orientation tracking
+        self.track_orientation     = rospy.get_param('arm_tracker/track_orientation',   True)
+        self.orientation_alpha     = rospy.get_param('arm_tracker/orientation_alpha',   0.05)
+        self.stability_threshold   = rospy.get_param('arm_tracker/stability_threshold', 0.003)
+        self.stability_ticks_req   = int(rospy.get_param('arm_tracker/stability_ticks', 15))
+
         # Joint PD gains for MotorCmd
         self.kp = rospy.get_param('arm_tracker/joint_kp', 150.0)
         self.kd = rospy.get_param('arm_tracker/joint_kd',   3.0)
@@ -71,6 +77,13 @@ class ArmTrackerNode:
         self._tx = self.fixed_x
         self._ty = 0.0
         self._tz = 0.40
+        # Smoothed orientation target (radians)
+        self._tpitch = 0.0
+        self._tyaw   = 0.0
+        # Stability gate state
+        self._stable_ticks  = 0
+        self._prev_ty_raw   = 0.0
+        self._prev_tz_raw   = 0.40
 
         ws = rospy.get_param('arm_tracker/workspace', {})
         self.y_min = ws.get('y', [-0.35, 0.35])[0]
@@ -132,6 +145,37 @@ class ArmTrackerNode:
     def _clamp(self, v, lo, hi):
         return max(lo, min(hi, v))
 
+    def _update_stability(self, ty_raw, tz_raw):
+        """Increment stable-tick counter when position target is barely moving."""
+        delta = abs(ty_raw - self._prev_ty_raw) + abs(tz_raw - self._prev_tz_raw)
+        self._prev_ty_raw = ty_raw
+        self._prev_tz_raw = tz_raw
+        if delta < self.stability_threshold:
+            self._stable_ticks = min(self._stable_ticks + 1, self.stability_ticks_req)
+        else:
+            self._stable_ticks = 0
+        return self._stable_ticks >= self.stability_ticks_req
+
+    def _facing_angles(self):
+        """Pitch and yaw for the end-effector to face the marker in world frame.
+        Computed from the arm base (world origin) to the marker — NOT from the
+        end-effector target, which would give ~zero vector because the arm follows
+        the marker in Y and Z.
+        With Z1 postureToHomo convention (rpy=0 → end-effector points +X world):
+          yaw   rotates left/right around world Z
+          pitch rotates up/down around world Y
+        """
+        p = self.latest_pose.pose.position
+        dist_xy = max(np.sqrt(p.x * p.x + p.y * p.y), 1e-6)
+        yaw   =  np.arctan2(p.y, p.x)
+        pitch = -np.arctan2(p.z, dist_xy)
+        return pitch, yaw
+
+    @staticmethod
+    def _angle_diff(target, current):
+        """Shortest signed angular difference, handles ±π wraparound."""
+        return (target - current + np.pi) % (2.0 * np.pi) - np.pi
+
     def _send_joint_commands(self, q_target):
         for i, pub in enumerate(self.joint_pubs):
             cmd = MotorCmd()
@@ -162,24 +206,47 @@ class ArmTrackerNode:
                 ty = self._ty
                 tz = self._tz
 
+                is_stable = self._update_stability(ty_raw, tz_raw)
+
                 if self.arm_model is not None and self.joint_pubs is not None:
                     try:
-                        # Build target homogeneous transform from 6D posture
-                        target_posture = np.array([0.0, 0.0, 0.0, tx, ty, tz])
-                        T_target = arm_sdk.postureToHomo(target_posture)
-
-                        # IK: warm-started from current joint angles
+                        # --- Position IK (always active, orientation fixed at zero) ---
+                        pos_posture = np.array([0.0, 0.0, 0.0, tx, ty, tz])
+                        T_pos = arm_sdk.postureToHomo(pos_posture)
                         with self._q_lock:
-                            q_target = self.q_current.copy()
+                            q_pos = self.q_current.copy()
+                        pos_ok, q_pos = self.arm_model.inverseKinematics(T_pos, q_pos, True)
 
-                        success, q_target = self.arm_model.inverseKinematics(T_target, q_target, True)
-
-                        if success:
-                            self._send_joint_commands(q_target)
-                        else:
+                        if not pos_ok:
                             rospy.logwarn_throttle(2.0,
                                 f"[arm_tracker] IK failed for target "
                                 f"x:{tx:.3f} y:{ty:.3f} z:{tz:.3f}")
+                            rate.sleep()
+                            continue
+
+                        q_send = q_pos.copy()
+
+                        # --- Wrist orientation IK (only when stable) ---
+                        if self.track_orientation and is_stable:
+                            pitch_raw, yaw_raw = self._facing_angles()
+                            self._tpitch += self.orientation_alpha * self._angle_diff(pitch_raw, self._tpitch)
+                            self._tyaw   += self.orientation_alpha * self._angle_diff(yaw_raw,   self._tyaw)
+
+                            ori_posture = np.array([0.0, self._tpitch, self._tyaw, tx, ty, tz])
+                            T_ori = arm_sdk.postureToHomo(ori_posture)
+                            q_ori = q_pos.copy()  # warm-start from position solution
+                            # checkWorkspace=False: position already validated above;
+                            # workspace check rejects valid wrist-only orientation changes.
+                            ori_ok, q_ori = self.arm_model.inverseKinematics(T_ori, q_ori, False)
+
+                            if ori_ok:
+                                # Joints 1-3: position from pos IK (unchanged)
+                                # Joints 4-6: wrist from orientation IK
+                                q_send[3:] = q_ori[3:]
+                            else:
+                                rospy.logdebug("[arm_tracker] Orientation IK failed — holding wrist")
+
+                        self._send_joint_commands(q_send)
 
                     except Exception as e:
                         rospy.logwarn_throttle(5.0, f"[arm_tracker] Control error: {e}")
