@@ -407,6 +407,83 @@ remapping in `aruco_detector_node.py` must match the actual `rpy` of
 `camera_color_optical_frame` in the URDF. With `rpy="0 0 0"`, the correct remapping
 is `pose.x = tvec[2]`, `pose.y = -tvec[0]`, `pose.z = -tvec[1]`.
 
+### Marker pose scale is wrong — motion in RViz is tiny, arm does not respond
+
+**Cause:** `aruco/marker_size` in `aruco_tracking.yaml` does not match the physical size
+(or the Gazebo model size). OpenCV multiplies all `tvec` distances by `marker_size`, so
+a mismatch compresses the entire pose estimate by the ratio `yaml_size / actual_size`.
+
+Example: model is 0.15 m but YAML says 0.05 → every distance is reported as 1/3 of
+reality → marker appears 3× closer, lateral motion is 3× smaller, arm target falls
+inside or outside the workspace in unexpected ways.
+
+**Fix:** keep `aruco/marker_size` in the YAML, the Gazebo `model.sdf` box dimensions,
+and the physical printed marker all at the **same value**. Currently the project uses
+`0.05 m` everywhere. Check with:
+
+```bash
+# Inside the container — what is the node actually using?
+rosparam get /aruco/marker_size
+```
+
+If it still shows 0.15, the hot-reload of the YAML did not take effect — repeat the
+`docker cp` and node restart below.
+
+### Marker not detected with small (50 mm) markers
+
+OpenCV's default `minMarkerPerimeterRate` (0.03) can reject small markers at moderate
+distances — the marker's projected perimeter falls below 3 % of the image perimeter.
+
+**Step 1 — verify the param server has the new values** (after `docker cp` + node restart):
+
+```bash
+rosparam get /aruco/min_marker_perimeter_rate   # should be 0.02, not 0.03
+rosparam get /aruco/marker_size                 # should match your printed marker
+```
+
+If these still show defaults, the YAML was not loaded from the updated file. Confirm the
+`docker cp` destination path matches exactly what the launch file loads.
+
+**Step 2 — watch the debug image:**
+
+```bash
+z1_camera   # alias for rosrun image_view image_view image:=/aruco/debug_image
+```
+
+If no green outline ever appears, the detector is rejecting the marker before pose estimation.
+
+**Fix:** lower `min_marker_perimeter_rate` in `aruco_tracking.yaml`:
+
+```yaml
+aruco:
+  marker_size: 0.05          # physical size in metres — must be exact
+  min_marker_perimeter_rate: 0.02   # 0.02 works reliably for 50 mm up to ~1.0 m
+  error_correction_rate: 0.6        # raise to 0.8 if marker is blurry or poorly printed
+```
+
+Hot-reload without rebuilding:
+
+```bash
+docker cp z1_aruco_detector/config/aruco_tracking.yaml \
+  ros-z1-real:/home/rosuser/catkin_ws/src/z1_aruco_detector/config/aruco_tracking.yaml
+# restart the node inside the container:
+rosnode kill /aruco_detector
+rosrun z1_aruco_detector aruco_detector_node.py
+```
+
+Detection range reference for a 50 mm marker at 640×480 / 69° FOV:
+
+| Distance | Approx. marker width (px) | Detectable (default 0.03) | Detectable (0.02) |
+| --- | --- | --- | --- |
+| 0.5 m | ~45 px | yes | yes |
+| 0.7 m | ~32 px | yes | yes |
+| 1.0 m | ~22 px | marginal | yes |
+| 1.5 m | ~15 px | no | marginal |
+
+If detection is still unreliable above 1.0 m, reduce `min_marker_perimeter_rate` further
+to 0.01 and ensure the marker is printed at high contrast on matte paper (glossy causes
+specular reflections that confuse the adaptive threshold).
+
 ### `tf_echo world camera_color_optical_frame` fails with "not part of same tree"
 
 Intermittent timing issue — `robot_state_publisher` hasn't yet published the full chain.

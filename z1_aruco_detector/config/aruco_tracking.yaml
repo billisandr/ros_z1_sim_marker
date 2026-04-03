@@ -12,7 +12,7 @@
 aruco:
   # OpenCV ArUco dictionary to use.
   # Options: DICT_4X4_50, DICT_4X4_100, DICT_5X5_50, DICT_6X6_250, DICT_7X7_1000
-  dictionary: DICT_4X4_50
+  dictionary: DICT_5X5_50
 
   # List of marker IDs to detect. The arm will track the first one in the list.
   # To track multiple markers, add more IDs — poses published on /aruco/marker_pose_<id>
@@ -20,7 +20,22 @@ aruco:
 
   # Physical size of the printed marker (metres), border included.
   # Must match the model.sdf box dimensions.
-  marker_size: 0.15
+  marker_size: 0.05
+
+  # --- Detection tuning (OpenCV ArUco DetectorParameters) ---
+  # Minimum marker perimeter as a fraction of the image perimeter (default 0.03).
+  # Lower this for small or distant markers. At 0.02, a 50 mm marker is detectable
+  # up to ~1.0 m at 640x480 with the D435 69° FOV.
+  min_marker_perimeter_rate: 0.02
+
+  # Adaptive thresholding window range (pixels, must be odd).
+  # Smaller min/step = crisper thresholding for small markers.
+  adaptive_thresh_win_size_min: 3
+  adaptive_thresh_win_size_max: 23
+  adaptive_thresh_win_size_step: 10
+
+  # Error correction tolerance (0.0–1.0). Higher = more forgiving on blurry markers.
+  error_correction_rate: 0.6
 
   # ID of the marker the arm should follow (must be in marker_ids).
   tracking_id: 0

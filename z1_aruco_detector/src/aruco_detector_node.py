@@ -38,6 +38,11 @@ class ArucoDetectorNode:
         aruco_dict_id = dict_map.get(dict_name, cv2.aruco.DICT_4X4_50)
         self.aruco_dict   = cv2.aruco.getPredefinedDictionary(aruco_dict_id)
         self.aruco_params = cv2.aruco.DetectorParameters()
+        self.aruco_params.minMarkerPerimeterRate    = rospy.get_param('aruco/min_marker_perimeter_rate',    0.02)
+        self.aruco_params.adaptiveThreshWinSizeMin  = rospy.get_param('aruco/adaptive_thresh_win_size_min', 3)
+        self.aruco_params.adaptiveThreshWinSizeMax  = rospy.get_param('aruco/adaptive_thresh_win_size_max', 23)
+        self.aruco_params.adaptiveThreshWinSizeStep = rospy.get_param('aruco/adaptive_thresh_win_size_step', 10)
+        self.aruco_params.errorCorrectionRate       = rospy.get_param('aruco/error_correction_rate',        0.6)
         self.detector     = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
         rospy.loginfo(f"[aruco_detector] Using dictionary: {dict_name}, tracking ID: {self.target_id}")
 
@@ -72,6 +77,16 @@ class ArucoDetectorNode:
             return
 
         corners, ids, _ = self.detector.detectMarkers(frame)
+
+        # Always draw ALL detected markers with their IDs — visible even if target not found.
+        # This makes it possible to diagnose dictionary mismatches and wrong IDs.
+        if ids is not None:
+            cv2.aruco.drawDetectedMarkers(frame, corners, ids)
+            non_target = [mid for mid in ids.flatten() if mid != self.target_id]
+            if non_target:
+                rospy.logwarn_throttle(5.0,
+                    f"[aruco_detector] Detected IDs {non_target} — target is {self.target_id}. "
+                    "Check aruco/tracking_id or marker_ids in aruco_tracking.yaml.")
 
         detected = False
         if ids is not None:
@@ -125,8 +140,6 @@ class ArucoDetectorNode:
                 except Exception as e:
                     rospy.logwarn_throttle(5.0, f"[aruco_detector] TF transform failed: {e}")
 
-                # Draw debug overlay
-                cv2.aruco.drawDetectedMarkers(frame, corners)
                 cv2.drawFrameAxes(frame, self.camera_matrix, self.dist_coeffs, rvec, tvec, 0.05)
                 break
 

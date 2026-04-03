@@ -285,6 +285,28 @@ marker:
   frequency: 0.2           # Hz
 ```
 
+### Marker Detection
+
+```yaml
+aruco:
+  marker_size: 0.05          # physical marker size in metres (border included) — must be exact
+  dictionary: DICT_4X4_50
+  tracking_id: 0
+
+  # Detection tuning — important for small or distant markers
+  min_marker_perimeter_rate: 0.02   # lower = detect smaller/more distant markers (default 0.03)
+  error_correction_rate: 0.6        # raise to 0.8 if marker is blurry or poorly printed
+```
+
+**`marker_size` must match everywhere:** the YAML value, the Gazebo `model.sdf` box
+dimensions (`z1_aruco/models/aruco_marker_0/model.sdf`), and the physical printed marker
+must all use the same size. A mismatch compresses all pose estimates by the ratio
+`yaml_size / actual_size` — the arm target will be wrong and tracking will fail.
+
+For small markers (≤ 50 mm) the default OpenCV `minMarkerPerimeterRate` of 0.03 can cause
+missed detections at distances above ~0.8 m. Set it to 0.02 or lower. See
+[docs/STARTUP.md](docs/STARTUP.md) for a detection-range reference table.
+
 ### Arm Tracker
 
 ```yaml
