@@ -52,6 +52,9 @@ RUN apt-get update && apt-get install -y \
     ros-noetic-image-transport \
     ros-noetic-tf2-ros \
     ros-noetic-tf2-geometry-msgs \
+    ros-noetic-realsense2-camera \
+    ros-noetic-ddynamic-reconfigure \
+    libuvc-dev \
     && pip3 install opencv-contrib-python-headless \
     && rm -rf /var/lib/apt/lists/*
 
@@ -85,6 +88,7 @@ COPY --chown=$USERNAME:$USERNAME unitree_ros /home/$USERNAME/catkin_ws/src/unitr
 COPY --chown=$USERNAME:$USERNAME z1_controller/sim /home/$USERNAME/catkin_ws/src/z1_controller
 COPY --chown=$USERNAME:$USERNAME z1_aruco_detector /home/$USERNAME/catkin_ws/src/z1_aruco_detector
 COPY --chown=$USERNAME:$USERNAME z1_arm_tracker /home/$USERNAME/catkin_ws/src/z1_arm_tracker
+COPY --chown=$USERNAME:$USERNAME z1_aruco /home/$USERNAME/catkin_ws/src/z1_aruco
 
 # Cloner unitree_legged_msgs depuis unitree_ros_to_real
 RUN git clone --depth 1 https://github.com/unitreerobotics/unitree_ros_to_real.git /tmp/unitree_ros_to_real_tmp && \
@@ -105,7 +109,38 @@ RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && \
 # Configuration du shell pour charger ROS automatiquement
 RUN echo "source /opt/ros/noetic/setup.bash" >> $HOME/.bashrc && \
     echo "source $HOME/catkin_ws/devel/setup.bash" >> $HOME/.bashrc && \
-    echo 'export PS1="\[\033[01;36m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> $HOME/.bashrc
+    echo 'export PS1="\[\033[01;36m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> $HOME/.bashrc && \
+    # ------------------------------------------------------------------ \
+    # Simulation aliases \
+    # ------------------------------------------------------------------ \
+    echo '' >> $HOME/.bashrc && \
+    echo '# --- ArUco tracking simulation (full Gazebo + simulated camera + marker) ---' >> $HOME/.bashrc && \
+    echo 'alias z1_sim="roslaunch z1_aruco z1_aruco_tracking.launch"' >> $HOME/.bashrc && \
+    echo 'alias z1_sim_headless="roslaunch z1_aruco z1_aruco_tracking.launch headless:=true paused:=false"' >> $HOME/.bashrc && \
+    echo '' >> $HOME/.bashrc && \
+    echo '# --- Real camera tracking (Gazebo arm + physical D435) ---' >> $HOME/.bashrc && \
+    echo 'alias z1_real="roslaunch z1_aruco z1_real_camera_tracking.launch"' >> $HOME/.bashrc && \
+    echo 'alias z1_real_headless="roslaunch z1_aruco z1_real_camera_tracking.launch headless:=true"' >> $HOME/.bashrc && \
+    echo '' >> $HOME/.bashrc && \
+    echo '# --- Unpause Gazebo physics ---' >> $HOME/.bashrc && \
+    echo 'alias z1_unpause="rosservice call /gazebo/unpause_physics"' >> $HOME/.bashrc && \
+    echo '' >> $HOME/.bashrc && \
+    echo '# --- Individual nodes (restart without full relaunch) ---' >> $HOME/.bashrc && \
+    echo 'alias z1_detector="rosrun z1_aruco_detector aruco_detector_node.py"' >> $HOME/.bashrc && \
+    echo 'alias z1_tracker="rosrun z1_arm_tracker arm_tracker_node.py"' >> $HOME/.bashrc && \
+    echo 'alias z1_mover="rosrun z1_aruco_detector marker_mover_node.py"' >> $HOME/.bashrc && \
+    echo '' >> $HOME/.bashrc && \
+    echo '# --- Visualisation ---' >> $HOME/.bashrc && \
+    echo 'alias z1_rviz="rviz -d ~/catkin_ws/src/z1_aruco/rviz/z1_aruco_tracking.rviz"' >> $HOME/.bashrc && \
+    echo 'alias z1_camera="rosrun image_view image_view image:=/aruco/debug_image"' >> $HOME/.bashrc && \
+    echo 'alias z1_camera_raw="rosrun image_view image_view image:=/camera/color/image_raw"' >> $HOME/.bashrc && \
+    echo '' >> $HOME/.bashrc && \
+    echo '# --- Diagnostics ---' >> $HOME/.bashrc && \
+    echo 'alias z1_nodes="rosnode list"' >> $HOME/.bashrc && \
+    echo 'alias z1_topics="rostopic list"' >> $HOME/.bashrc && \
+    echo 'alias z1_pose="rostopic echo /aruco/marker_pose"' >> $HOME/.bashrc && \
+    echo 'alias z1_detected="rostopic echo /aruco/marker_detected"' >> $HOME/.bashrc && \
+    echo 'alias z1_joints="rostopic echo /z1_gazebo/joint_states"' >> $HOME/.bashrc
 
 # GUI / GPU environment
 ENV LD_LIBRARY_PATH=/home/rosuser/sdk_z1/lib
@@ -123,4 +158,4 @@ ENV MESA_GL_VERSION_OVERRIDE=3.3
 WORKDIR $HOME
 
 # Launch ArUco tracking simulation on container start
-CMD ["/bin/bash", "-c", "source /opt/ros/noetic/setup.bash && source $HOME/catkin_ws/devel/setup.bash && roslaunch unitree_gazebo z1_aruco_tracking.launch"]
+CMD ["/bin/bash", "-c", "source /opt/ros/noetic/setup.bash && source $HOME/catkin_ws/devel/setup.bash && roslaunch z1_aruco z1_aruco_tracking.launch"]

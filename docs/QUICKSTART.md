@@ -56,9 +56,7 @@ docker run -it --rm \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   -v /home/sense/ros_docker/z1_aruco_detector:/home/rosuser/catkin_ws/src/z1_aruco_detector \
   -v /home/sense/ros_docker/z1_arm_tracker:/home/rosuser/catkin_ws/src/z1_arm_tracker \
-  -v /home/sense/ros_docker/unitree_ros/unitree_gazebo/launch:/home/rosuser/catkin_ws/src/unitree_ros/unitree_gazebo/launch \
-  -v /home/sense/ros_docker/unitree_ros/unitree_gazebo/worlds:/home/rosuser/catkin_ws/src/unitree_ros/unitree_gazebo/worlds \
-  -v /home/sense/ros_docker/unitree_ros/unitree_gazebo/rviz:/home/rosuser/catkin_ws/src/unitree_ros/unitree_gazebo/rviz \
+  -v /home/sense/ros_docker/z1_aruco:/home/rosuser/catkin_ws/src/z1_aruco \
   ros-z1 bash
 ```
 
@@ -103,7 +101,7 @@ docker run -it --rm \
 Launches the ArUco tracking simulation (Gazebo + ArUco detector + marker mover + arm tracker).
 
 ```bash
-roslaunch unitree_gazebo z1_aruco_tracking.launch [arg:=value ...]
+roslaunch z1_aruco z1_aruco_tracking.launch [arg:=value ...]
 ```
 
 | Argument | Default | Options | Description |
@@ -117,18 +115,18 @@ roslaunch unitree_gazebo z1_aruco_tracking.launch [arg:=value ...]
 
 ```bash
 # Fixed camera, start unpaused, no GUI
-roslaunch unitree_gazebo z1_aruco_tracking.launch \
+roslaunch z1_aruco z1_aruco_tracking.launch \
   camera_mode:=fixed \
   paused:=false \
   gui:=false
 
 # End-effector camera, headless (no Gazebo window, fastest)
-roslaunch unitree_gazebo z1_aruco_tracking.launch \
+roslaunch z1_aruco z1_aruco_tracking.launch \
   camera_mode:=end_effector \
   headless:=true
 
 # End-effector camera, start unpaused, GUI visible
-roslaunch unitree_gazebo z1_aruco_tracking.launch \
+roslaunch z1_aruco z1_aruco_tracking.launch \
   paused:=false \
   gui:=true
 ```
@@ -174,7 +172,7 @@ Use multiple host terminals or tmux panes inside the container.
 
 ```bash
 source /opt/ros/noetic/setup.bash && source ~/catkin_ws/devel/setup.bash
-roslaunch unitree_gazebo z1_aruco_tracking.launch
+roslaunch z1_aruco z1_aruco_tracking.launch
 ```
 
 ### Terminal 2 — Camera feed with ArUco overlay
@@ -200,7 +198,7 @@ docker exec -e DISPLAY=$DISPLAY -it z1_aruco bash -c \
 docker exec -e DISPLAY=$DISPLAY -it z1_aruco bash -c \
   "source /opt/ros/noetic/setup.bash && \
    source ~/catkin_ws/devel/setup.bash && \
-   rviz -d ~/catkin_ws/src/unitree_ros/unitree_gazebo/rviz/z1_aruco_tracking.rviz"
+   rviz -d ~/catkin_ws/src/z1_aruco/rviz/z1_aruco_tracking.rviz"
 ```
 
 Pre-configured displays:

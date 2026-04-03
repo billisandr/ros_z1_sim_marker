@@ -13,11 +13,13 @@ docker build -t ros-z1 .
 ```
 
 **When to rebuild** — required when changing:
+
 - `Dockerfile`
 - URDF / xacro files (`z1_description/xacro/`)
 - C++ sources (`z1_controller/`, `sdk_z1/`)
 
 **When `docker cp` is enough** — no rebuild needed for:
+
 - Python nodes (`aruco_detector_node.py`, `arm_tracker_node.py`, `marker_mover_node.py`)
 - YAML config (`aruco_tracking.yaml`)
 - Launch files (`.launch`) and RViz configs (`.rviz`)
@@ -48,7 +50,7 @@ xhost -local:docker
 ## 3. ArUco Tracking Simulation
 
 This is the primary simulation. The container CMD auto-starts
-`roslaunch unitree_gazebo z1_aruco_tracking.launch` on entry.
+`roslaunch z1_aruco z1_aruco_tracking.launch` on entry.
 
 ### 3.1 Start the container
 
@@ -78,9 +80,7 @@ docker run -it --rm \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   -v $(pwd)/z1_aruco_detector:/home/rosuser/catkin_ws/src/z1_aruco_detector \
   -v $(pwd)/z1_arm_tracker:/home/rosuser/catkin_ws/src/z1_arm_tracker \
-  -v $(pwd)/unitree_ros/unitree_gazebo/launch:/home/rosuser/catkin_ws/src/unitree_ros/unitree_gazebo/launch \
-  -v $(pwd)/unitree_ros/unitree_gazebo/worlds:/home/rosuser/catkin_ws/src/unitree_ros/unitree_gazebo/worlds \
-  -v $(pwd)/unitree_ros/unitree_gazebo/rviz:/home/rosuser/catkin_ws/src/unitree_ros/unitree_gazebo/rviz \
+  -v $(pwd)/z1_aruco:/home/rosuser/catkin_ws/src/z1_aruco \
   ros-z1 bash
 ```
 
@@ -91,7 +91,7 @@ When the container starts with the default CMD, the following happens in a singl
 
 | Node | Package | Role |
 | --- | --- | --- |
-| Gazebo | `unitree_gazebo` | Physics sim, joint controllers, camera plugin |
+| Gazebo | `z1_aruco` | Physics sim, joint controllers, camera plugin |
 | `robot_state_publisher` | ROS | Publishes TF for the full kinematic chain incl. camera |
 | `aruco_detector_node` | `z1_aruco_detector` | Detects marker in camera image, publishes world-frame pose |
 | `marker_mover_node` | `z1_aruco_detector` | Moves the ArUco marker in Gazebo along a configurable path |
@@ -113,7 +113,7 @@ docker exec -it ros-z1 bash -c \
 ### 3.4 roslaunch arguments
 
 ```bash
-roslaunch unitree_gazebo z1_aruco_tracking.launch [arg:=value ...]
+roslaunch z1_aruco z1_aruco_tracking.launch [arg:=value ...]
 ```
 
 | Argument | Default | Options | Description |
@@ -126,17 +126,17 @@ roslaunch unitree_gazebo z1_aruco_tracking.launch [arg:=value ...]
 
 ```bash
 # Headless, unpaused — fastest, no GUI windows
-roslaunch unitree_gazebo z1_aruco_tracking.launch headless:=true paused:=false
+roslaunch z1_aruco z1_aruco_tracking.launch headless:=true paused:=false
 
 # Fixed camera mode, GUI visible
-roslaunch unitree_gazebo z1_aruco_tracking.launch camera_mode:=fixed paused:=false
+roslaunch z1_aruco z1_aruco_tracking.launch camera_mode:=fixed paused:=false
 ```
 
 ### 3.5 Configuration
 
 All simulation behaviour is controlled by a single YAML file:
 
-```
+```txt
 z1_aruco_detector/config/aruco_tracking.yaml
 ```
 
@@ -164,7 +164,7 @@ and restart the affected node.
 ```bash
 docker exec -e DISPLAY=$DISPLAY -it ros-z1 bash -c \
   "source ~/.bashrc && \
-   rviz -d ~/catkin_ws/src/unitree_ros/unitree_gazebo/rviz/z1_aruco_tracking.rviz"
+   rviz -d ~/catkin_ws/src/z1_aruco/rviz/z1_aruco_tracking.rviz"
 ```
 
 **Camera feed with ArUco overlay:**
@@ -186,7 +186,116 @@ docker exec -it ros-z1 bash -c "source ~/.bashrc && rosnode list"
 
 ---
 
-## 4. Rendering
+## 4. Real Camera Tracking (D435 + Gazebo)
+
+This workflow replaces the simulated camera with a physical RealSense D435 connected
+to the host laptop. Gazebo runs the arm and joint controllers as normal. The D435
+driver publishes to the same `/camera/color/image_raw` and `/camera/color/camera_info`
+topics the detector already expects — nothing else changes.
+
+The camera TF (`camera_color_optical_frame` → `link06`) is still broadcast by
+`robot_state_publisher` via the URDF, so the arm "believes" the camera is on its
+wrist. The Gazebo sensor plugin is suppressed (`CameraPlugin:=false`) so it does not
+conflict with the real camera stream.
+
+### 4.1 Host prerequisites (run once)
+
+The Intel RealSense apt repo does not support Ubuntu 24 (Noble). Install only the
+udev rules directly from the upstream source:
+
+```bash
+sudo curl -fsSL https://raw.githubusercontent.com/IntelRealSense/librealsense/master/config/99-realsense-libusb.rules \
+  -o /etc/udev/rules.d/99-realsense-libusb.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+Unplug and replug the D435 after reloading rules. Verify the camera is visible on the host:
+
+```bash
+lsusb | grep RealSense
+# expected: Bus 00X Device 00X: ID 8086:0b07 Intel Corp. RealSense D435
+```
+
+`rs-enumerate-devices` is not available on Ubuntu 24 without building librealsense from
+source. Use `lsusb` to confirm the device is present before starting the container.
+
+### 4.2 Build and start the container
+
+```bash
+docker build -t ros-z1-aruco-real .
+```
+
+Find the USB bus the D435 is on:
+
+```bash
+lsusb | grep RealSense
+# example: Bus 004 Device 003: ID 8086:0b07 Intel Corp. RealSense D435
+```
+
+Start the container passing only that bus (bus 004 in this example):
+
+```bash
+docker run -it --rm \
+  --name ros-z1-real \
+  -e DISPLAY=$DISPLAY \
+  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  --device /dev/bus/usb/004:/dev/bus/usb/004 \
+  ros-z1-aruco-real bash
+```
+
+Using a specific bus (`/dev/bus/usb/004`) rather than all buses is cleaner and avoids
+unnecessary device exposure. If the bus number changes after a replug, recheck with
+`lsusb` and update the `--device` path.
+
+If the driver logs `RS2_USB_STATUS_ACCESS`, the udev rules have not taken effect —
+unplug and replug the D435 after reloading rules. As a fallback for workshop use:
+
+```bash
+docker run -it --rm \
+  --name ros-z1-real \
+  -e DISPLAY=$DISPLAY \
+  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  --privileged \
+  ros-z1-aruco-real bash
+```
+
+### 4.3 Launch
+
+```bash
+source ~/.bashrc
+roslaunch z1_aruco z1_real_camera_tracking.launch
+```
+
+Unpause Gazebo:
+
+```bash
+rosservice call /gazebo/unpause_physics
+```
+
+Note: `z1_real_camera_tracking.launch` sets `use_sim_time:=false`. This is required
+because the D435 driver timestamps images in wall clock time, while Gazebo sim time
+starts near zero. With `use_sim_time:=true`, the TF lookup for the camera frame would
+fail with "Lookup would require extrapolation into the future".
+
+### 4.4 roslaunch arguments
+
+| Argument | Default | Description |
+| --- | --- | --- |
+| `realsense_serial` | `""` | D435 serial number — leave empty for first connected device |
+| `paused` | `true` | Start Gazebo paused |
+| `gui` | `true` | Show Gazebo GUI |
+| `headless` | `false` | No rendering |
+| `UnitreeGripperYN` | `true` | Include gripper controller |
+
+### 4.5 Marker setup
+
+Use a printed DICT_4X4_50 marker ID 0 at `marker_size: 0.15` m (matches config default).
+Hold or mount the marker in front of the D435. The arm will track its Y and Z
+in the camera frame, using the same IK and low-pass filter as the simulation.
+
+---
+
+## 6. Rendering
 
 The image uses Mesa software rendering by default. Both `LIBGL_ALWAYS_SOFTWARE=1`
 and `MESA_GL_VERSION_OVERRIDE=3.3` are baked into the Dockerfile via `ENV`.
@@ -210,6 +319,7 @@ docker run -it --rm \
 ```
 
 Requires `nvidia-container-toolkit` on the host:
+
 ```bash
 sudo apt-get install nvidia-container-toolkit
 sudo nvidia-ctk runtime configure --runtime=docker
@@ -220,9 +330,9 @@ sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
 
 ---
 
-## 5. Architecture
+## 7. Architecture
 
-```
+```txt
 Gazebo camera plugin
       │ /camera/color/image_raw
       ▼
@@ -267,7 +377,7 @@ Gazebo joint controllers
 
 ---
 
-## 6. Troubleshooting
+## 8. Troubleshooting
 
 **arm_tracker logs `DRY RUN` — not sending commands**
 
@@ -281,41 +391,60 @@ export LD_LIBRARY_PATH=/home/rosuser/sdk_z1/lib:$LD_LIBRARY_PATH
 python3 -c "import sys; sys.path.insert(0, '/home/rosuser/sdk_z1/lib'); import unitree_arm_interface; print('OK')"
 ```
 
-**IK failures — `IK failed for target x:... y:... z:...`**
+### IK failures — `IK failed for target x:... y:... z:...`
 
 The requested Cartesian position is outside the Z1's reachable workspace. Check:
+
 - `fixed_x` — values above ~0.55m at non-zero Y/Z can exceed reach. Try `0.25`–`0.40`.
 - `workspace.z` max — if the marker Z is being clamped to the ceiling (`0.75`), lower the
   marker `center` Z or raise the clamp value.
 - The IK uses `checkWorkspace=True` — it will refuse positions near joint limits.
 
-**Marker world-frame Z is inflated (reads ~0.83m instead of ~0.50m)**
+### Marker world-frame Z is inflated (reads ~0.83m instead of ~0.50m)
 
 This means the camera axes are misaligned with the TF frame orientation. The tvec axis
 remapping in `aruco_detector_node.py` must match the actual `rpy` of
 `camera_color_optical_frame` in the URDF. With `rpy="0 0 0"`, the correct remapping
 is `pose.x = tvec[2]`, `pose.y = -tvec[0]`, `pose.z = -tvec[1]`.
 
-**`tf_echo world camera_color_optical_frame` fails with "not part of same tree"**
+### `tf_echo world camera_color_optical_frame` fails with "not part of same tree"
 
 Intermittent timing issue — `robot_state_publisher` hasn't yet published the full chain.
 Retry after a few seconds. If persistent, check that `robot_state_publisher` is running
 and that `EndEffectorCamera:=true` was passed to xacro (controlled by `camera_mode`).
 
-**Arm moves but loses the marker immediately**
+### Arm moves but loses the marker immediately
 
 - Marker is too close — increase `marker.center[0]` (X) so it stays further from the arm.
 - Tracking is too fast — lower `arm_tracker.smoothing_alpha` (e.g. `0.05`).
 - Workspace clamp too tight — the arm may be hitting a Y/Z limit and stopping.
 
-**`unitree_legged_msgs` not found at Python import**
+### `unitree_legged_msgs` not found at Python import
 
 The catkin workspace must be sourced. Inside the container: `source ~/.bashrc`.
 The `.bashrc` sources both `/opt/ros/noetic/setup.bash` and `~/catkin_ws/devel/setup.bash`.
 
+### TF error: "Lookup would require extrapolation into the future" (real camera mode)
+
+Caused by `use_sim_time:=true` mixed with real camera wall-clock timestamps. The D435
+driver stamps images at ~1.7 billion seconds (Unix epoch), while Gazebo sim time starts
+near zero. The TF lookup for `camera_color_optical_frame` then asks for a timestamp far
+in the future relative to the sim clock. `z1_real_camera_tracking.launch` sets
+`use_sim_time:=false` to prevent this. If the error appears, confirm you are using the
+correct launch file and not `z1_aruco_tracking.launch`.
+
+### D435 not found or `RS2_USB_STATUS_ACCESS` in real camera mode
+
+The container cannot open the USB device. Steps to resolve:
+
+1. Confirm the camera is visible on the host: `lsusb | grep RealSense`
+2. Install udev rules on the host and unplug/replug the D435 (see section 4.1)
+3. Start the container with `--device /dev/bus/usb:/dev/bus/usb`
+4. If still failing on Ubuntu 24, use `--privileged` as a fallback
+
 ---
 
-## 7. Future Work
+## 9. Future Work
 
 ### Basic Z1 Gazebo + sim_ctrl (currently functional)
 
@@ -356,6 +485,7 @@ The current llvmpipe path is stable for simulation but slow for complex worlds.
 ### Real hardware deployment
 
 Deploying to the physical Z1 arm requires:
+
 - Switching to `unitree_ros_to_real` for the ROS ↔ UDP bridge
 - Calling `arm.loopOn()` in `arm_tracker_node.py` to open the UDP connection
 - Replacing the Gazebo camera with a real RealSense D435 and its ROS driver

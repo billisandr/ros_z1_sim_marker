@@ -98,15 +98,26 @@ class ArucoDetectorNode:
                 pose_camera.pose.position.y = -tvec[0]  # right  → frame -Y (left axis)
                 pose_camera.pose.position.z = -tvec[1]  # down   → frame -Z (up axis)
 
+                # Remap rotation to match the tvec axis remapping.
+                # R_remap is the same axis permutation applied to tvec:
+                #   new X = OpenCV Z, new Y = -OpenCV X, new Z = -OpenCV Y
                 rot_mat, _ = cv2.Rodrigues(rvec)
-                quat = self._rotation_matrix_to_quaternion(rot_mat)
+                R_remap = np.array([[ 0,  0,  1],
+                                    [-1,  0,  0],
+                                    [ 0, -1,  0]], dtype=np.float64)
+                rot_remapped = R_remap @ rot_mat @ R_remap.T
+                quat = self._rotation_matrix_to_quaternion(rot_remapped)
                 pose_camera.pose.orientation.x = quat[0]
                 pose_camera.pose.orientation.y = quat[1]
                 pose_camera.pose.orientation.z = quat[2]
                 pose_camera.pose.orientation.w = quat[3]
 
-                # Transform to world frame
+                # Transform to world frame.
+                # Use rospy.Time(0) — latest available TF — to avoid clock mismatch
+                # between wall-clock image timestamps (real camera) and sim-time TF
+                # published by robot_state_publisher from Gazebo joint states.
                 try:
+                    pose_camera.header.stamp = rospy.Time(0)
                     pose_world = self.tf_buffer.transform(
                         pose_camera, 'world', timeout=rospy.Duration(0.1)
                     )

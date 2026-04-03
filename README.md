@@ -64,11 +64,12 @@ No ROS installation is needed on the host. Everything runs inside the container.
 ```bash
 git clone <repo-url> ros_docker
 cd ros_docker
-docker build -t ros-z1 .
+docker build -t ros-z1-aruco-real .
 ```
 
-The build installs ROS Noetic, Gazebo, RViz, OpenCV with ArUco support, and compiles
-`z1_controller` and `sdk_z1` binaries. First build takes 10-15 minutes.
+The build installs ROS Noetic, Gazebo, RViz, OpenCV with ArUco support, the RealSense2
+ROS driver, and compiles `z1_controller` and `sdk_z1` binaries. First build takes
+10-15 minutes.
 
 ### Optional — GPU Hardware Rendering
 
@@ -93,34 +94,55 @@ Then pass `-e LIBGL_ALWAYS_SOFTWARE=0 --gpus all` to `docker run`. See [docs/DOC
 xhost +local:docker
 ```
 
-**2. Start the container with live file sync:** [RECOMMENDED]
+**2a. Gazebo simulation (simulated camera + animated marker):**
 
 ```bash
 docker run -it --rm \
-  --name z1_aruco \
+  --name ros-z1-real \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
-  -v $(pwd)/z1_aruco_detector:/home/rosuser/catkin_ws/src/z1_aruco_detector \
-  -v $(pwd)/z1_arm_tracker:/home/rosuser/catkin_ws/src/z1_arm_tracker \
-  -v $(pwd)/unitree_ros/unitree_gazebo/launch:/home/rosuser/catkin_ws/src/unitree_ros/unitree_gazebo/launch \
-  -v $(pwd)/unitree_ros/unitree_gazebo/worlds:/home/rosuser/catkin_ws/src/unitree_ros/unitree_gazebo/worlds \
-  -v $(pwd)/unitree_ros/unitree_gazebo/rviz:/home/rosuser/catkin_ws/src/unitree_ros/unitree_gazebo/rviz \
-  ros-z1 bash
+  ros-z1-aruco-real bash
 ```
 
-**3. Launch the ArUco tracking simulation (Terminal 1, inside container):**
+Inside the container:
 
 ```bash
-source /opt/ros/noetic/setup.bash && source ~/catkin_ws/devel/setup.bash
-roslaunch unitree_gazebo z1_aruco_tracking.launch
+z1_sim        # launches Gazebo + ArUco tracking simulation
+z1_unpause    # unpause physics (separate terminal)
+z1_rviz       # open RViz (separate terminal)
 ```
 
-**4. Open RViz to visualize the arm and marker (Terminal 2):**
+**2b. Real camera mode (physical D435 + Gazebo arm):** [RECOMMENDED for workshop]
+
+Find the D435 USB bus on the host:
 
 ```bash
-docker exec -e DISPLAY=$DISPLAY -it ros-z1 bash -c \
-  "source ~/.bashrc && \
-   rviz -d ~/catkin_ws/src/unitree_ros/unitree_gazebo/rviz/z1_aruco_tracking.rviz"
+lsusb | grep RealSense
+# example: Bus 004 Device 003: ID 8086:0b07 Intel Corp. RealSense D435
+```
+
+```bash
+docker run -it --rm \
+  --name ros-z1-real \
+  -e DISPLAY=$DISPLAY \
+  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  --device /dev/bus/usb/004:/dev/bus/usb/004 \
+  ros-z1-aruco-real bash
+```
+
+Inside the container:
+
+```bash
+z1_real       # launches Gazebo arm + real D435 tracking
+z1_unpause    # unpause physics (separate terminal)
+z1_rviz       # open RViz (separate terminal)
+```
+
+**3. Open RViz (any mode, Terminal 2):**
+
+```bash
+docker exec -e DISPLAY=$DISPLAY -it ros-z1-real bash -c \
+  "source ~/.bashrc && z1_rviz"
 ```
 
 See [docs/STARTUP.md](docs/STARTUP.md) for the full developer reference — roslaunch arguments,
@@ -152,18 +174,22 @@ ros_docker/
 │   └── src/
 │       └── arm_tracker_node.py       # Sends Cartesian commands to sim_ctrl via UDP
 │
-├── unitree_ros/                      # Unitree ROS packages (submodule)
-│   └── unitree_gazebo/
-│       ├── launch/
-│       │   ├── z1_aruco_tracking.launch   # Master launch: Gazebo + all nodes
-│       │   └── z1.launch                  # Standard Z1 Gazebo launch
-│       ├── worlds/
-│       │   └── aruco_tracking.world       # World with arm, camera, marker
-│       ├── models/
-│       │   ├── realsense_d435/            # Gazebo RealSense D435 model
-│       │   └── aruco_marker_0/            # Gazebo ArUco marker ID 0 model
-│       └── rviz/
-│           └── z1_aruco_tracking.rviz     # Pre-configured RViz layout
+├── z1_aruco/                         # ROS package — project-specific launch, worlds, models
+│   ├── launch/
+│   │   ├── z1_aruco_tracking.launch        # Simulation: Gazebo + simulated camera + marker
+│   │   └── z1_real_camera_tracking.launch  # Real camera: Gazebo arm + physical D435
+│   ├── worlds/
+│   │   ├── aruco_tracking.world       # World with arm and ArUco marker
+│   │   └── aruco_tracking_real.world  # World with arm only (no marker, no camera)
+│   ├── models/
+│   │   ├── realsense_d435/            # Gazebo RealSense D435 model
+│   │   └── aruco_marker_0/            # Gazebo ArUco marker ID 0 model
+│   ├── xacro/
+│   │   └── z1_aruco_robot.xacro      # Z1 URDF with end-effector camera additions
+│   └── rviz/
+│       └── z1_aruco_tracking.rviz     # Pre-configured RViz layout
+│
+├── unitree_ros/                      # Unitree ROS packages (submodule, unmodified upstream)
 │
 ├── z1_controller/                    # Unitree Z1 FSM controller (C++)
 │   └── build/                        # sim_ctrl binary (run from here)
@@ -181,47 +207,51 @@ ros_docker/
 
 ## Architecture
 
+Two modes share the same detector and tracker — only the image source changes.
+
+**Simulation mode** (`z1_aruco_tracking.launch`):
+
 ```txt
   Gazebo Simulation
-  ┌─────────────────────────────────────────────┐
-  │  Z1 Arm  ←── joint controllers              │
-  │  ArUco Marker (animated)                    │
-  │  RealSense D435 camera plugin               │
-  └──────────────┬──────────────────────────────┘
+  ┌──────────────────────────────────────────────────┐
+  │  Z1 Arm  ←── joint controllers                   │
+  │  ArUco Marker (animated by marker_mover_node)    │
+  │  RealSense D435 camera plugin (URDF, wrist)      │
+  └──────────────┬───────────────────────────────────┘
                  │ /camera/color/image_raw
                  ▼
-        aruco_detector_node.py
-        (OpenCV ArUco detection,
-         TF projection to world frame)
-                 │ /aruco/marker_pose (PoseStamped)
-                 │ /aruco/marker_detected (Bool)
-                 │ /aruco/debug_image (Image)
-                 ▼
-        arm_tracker_node.py
-        (Cartesian proportional control,
-         low-pass filter, workspace clamping)
-                 │ UDP 127.0.0.1:8071
-                 ▼
-        sim_ctrl (SDK mode)
-        (Unitree FSM — Cartesian state)
-                 │ ROS joint controllers
-                 ▼
-          Z1 arm follows marker
+        aruco_detector_node ──► arm_tracker_node
+                                       │ MotorCmd
+                                       ▼
+                               joint controllers
+```
 
-  marker_mover_node.py ──► /gazebo/set_model_state
-  (sinusoidal / circular / figure-8 / static)
+**Real camera mode** (`z1_real_camera_tracking.launch`):
+
+```txt
+  Physical D435 (USB)          Gazebo Simulation
+  ┌─────────────────┐          ┌──────────────────────┐
+  │  RealSense D435 │          │  Z1 Arm              │
+  │  (real frames)  │          │  (camera TF on wrist)│
+  └────────┬────────┘          └──────────────────────┘
+           │ /camera/color/image_raw
+           ▼
+  aruco_detector_node ──► arm_tracker_node
+                                 │ MotorCmd
+                                 ▼
+                         joint controllers
 ```
 
 ### Data Flow
 
-| Topic / Channel | Type | From | To |
+| Topic | Type | From | To |
 | --- | --- | --- | --- |
-| `/camera/color/image_raw` | `sensor_msgs/Image` | Gazebo camera plugin | aruco_detector |
+| `/camera/color/image_raw` | `sensor_msgs/Image` | Gazebo plugin or real D435 | aruco_detector |
 | `/aruco/marker_pose` | `geometry_msgs/PoseStamped` | aruco_detector | arm_tracker |
 | `/aruco/marker_detected` | `std_msgs/Bool` | aruco_detector | arm_tracker |
 | `/aruco/debug_image` | `sensor_msgs/Image` | aruco_detector | image_view / RViz |
-| `/gazebo/set_model_state` | `gazebo_msgs/ModelState` | marker_mover | Gazebo |
-| UDP 127.0.0.1:8071 | binary | arm_tracker | sim_ctrl |
+| `/z1_gazebo/JointXX_controller/command` | `MotorCmd` | arm_tracker | Gazebo joint controllers |
+| `/gazebo/set_model_state` | `gazebo_msgs/ModelState` | marker_mover | Gazebo (sim mode only) |
 
 ---
 
@@ -248,23 +278,22 @@ The launch file argument `camera_mode:=end_effector` must match `camera/mode` in
 
 ```yaml
 marker:
-  motion_pattern: sinusoidal   # sinusoidal, circular, figure8, static
-  center: [0.70, 0.0, 0.50]    # world frame (metres)
-  amplitude_y: 0.20             # side-to-side
-  amplitude_z: 0.10             # up-down
-  frequency: 0.2                # Hz
+  motion_pattern: square   # sinusoidal, circular, figure8, square, static
+  center: [0.70, 0.0, 0.50]
+  amplitude_y: 0.20
+  amplitude_z: 0.10
+  frequency: 0.2           # Hz
 ```
 
 ### Arm Tracker
 
 ```yaml
 arm_tracker:
-  cartesian_speed: 0.1     # m/s — keep <= 0.5 for safe simulation
-  proportional_gain: 2.0   # gain=2 → full speed at 0.5 m error
-  smoothing_alpha: 0.10    # low-pass filter (0.0=frozen, 1.0=instant)
-  fixed_x: 0.25            # fixed forward reach (metres)
+  smoothing_alpha: 0.10    # low-pass filter (0.0=frozen, 1.0=instant snap)
+  fixed_x: 0.25            # fixed forward reach (metres) — arm only follows Y and Z
+  joint_kp: 150.0          # PD position gain for MotorCmd
+  joint_kd: 3.0            # PD velocity gain for MotorCmd
   workspace:
-    x: [0.20, 0.65]
     y: [-0.35, 0.35]
     z: [0.10, 0.75]
 ```
@@ -272,17 +301,17 @@ arm_tracker:
 ### roslaunch Arguments
 
 ```bash
-# ArUco tracking simulation
-roslaunch unitree_gazebo z1_aruco_tracking.launch \
+# Simulation mode
+roslaunch z1_aruco z1_aruco_tracking.launch \
   camera_mode:=end_effector \   # end_effector | fixed
-  paused:=true \                # start Gazebo paused
-  gui:=true \                   # show Gazebo window
-  headless:=false \             # no rendering (fastest)
-  UnitreeGripperYN:=true        # include gripper controller
+  paused:=true \
+  gui:=true \
+  headless:=false \
+  UnitreeGripperYN:=true
 
-# Standard Z1 simulation
-roslaunch unitree_gazebo z1.launch \
-  wname:=earth \                # earth | space | stairs | building_editor_models
+# Real camera mode
+roslaunch z1_aruco z1_real_camera_tracking.launch \
+  realsense_serial:="" \        # leave empty for first connected D435
   paused:=true \
   gui:=true \
   headless:=false \
@@ -298,22 +327,26 @@ Error: "cannot open display"
 - Cause: X11 forwarding not enabled on the host
 - Solution: Run "xhost +local:docker" before starting the container
 
-Error: "roslaunch: command not found" or "package not found"
-- Cause: ROS environment not sourced
-- Solution: Run "source /opt/ros/noetic/setup.bash && source ~/catkin_ws/devel/setup.bash"
-
-Error: arm_tracker sends commands but arm does not move
-- Cause: sim_ctrl is not running, or is in keyboard mode instead of SDK mode
-- Solution: Run "cd ~/z1_controller/build && ~/catkin_ws/build/sim_ctrl" (no "keyboard" argument)
+Error: arm_tracker logs DRY RUN — not sending commands
+- Cause: unitree_arm_interface Python binding failed to import (missing LD_LIBRARY_PATH)
+- Solution: Rebuild the image — ENV LD_LIBRARY_PATH is set in the Dockerfile
 
 Error: aruco_detector node starts but /aruco/marker_detected stays false
 - Cause: Camera not publishing, or marker not visible in camera frame
 - Solution: Check "rostopic hz /camera/color/image_raw" — should be ~30 Hz
-            Check camera_mode in YAML matches the camera_mode launch argument
 
-Error: Gazebo opens but arm is frozen / physics paused
+Error: Gazebo opens but arm is frozen
 - Cause: Gazebo starts paused by default
-- Solution: Click Play in the Gazebo GUI, or relaunch with "paused:=false"
+- Solution: Run z1_unpause or click Play in the Gazebo GUI
+
+Error: D435 not found — RS2_USB_STATUS_ACCESS (real camera mode)
+- Cause: udev rules not installed on host, or wrong USB bus passed to docker run
+- Solution: Install udev rules (see docs/STARTUP.md section 4.1), unplug/replug D435,
+            check bus with "lsusb | grep RealSense" and update --device path
+
+Error: TF transform failed — extrapolation into the future (real camera mode)
+- Cause: use_sim_time mismatch between Gazebo sim clock and D435 wall-clock timestamps
+- Solution: Use z1_real_camera_tracking.launch — it sets use_sim_time:=false
 ```
 
 ---
@@ -335,6 +368,10 @@ Error: Gazebo opens but arm is frozen / physics paused
 ### RViz visualization (video)
 
 [z1-aruco-rviz.webm](assets/z1-aruco-rviz.webm)
+
+### Real camera tracking — D435 + Gazebo arm (video)
+
+[z1-aruco-realsense.webm](assets/z1-aruco-realsense.webm)
 
 ---
 

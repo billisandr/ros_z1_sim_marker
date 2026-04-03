@@ -5,7 +5,7 @@
 | Simulation | Container name | Launch |
 | --- | --- | --- |
 | Standard Z1 (no ArUco) | `z1_sim` | `roslaunch unitree_gazebo z1.launch` |
-| ArUco tracking | `z1_aruco` | `roslaunch unitree_gazebo z1_aruco_tracking.launch` |
+| ArUco tracking | `z1_aruco` | `roslaunch z1_aruco z1_aruco_tracking.launch` |
 
 Use the matching `--name` when starting the container so `docker exec` targets the right one.
 

@@ -73,8 +73,7 @@ docker run -it --rm \
 docker run -it --rm \
   -v /home/sense/ros_docker/z1_aruco_detector:/home/rosuser/catkin_ws/src/z1_aruco_detector \
   -v /home/sense/ros_docker/z1_arm_tracker:/home/rosuser/catkin_ws/src/z1_arm_tracker \
-  -v /home/sense/ros_docker/unitree_ros/unitree_gazebo/launch:/home/rosuser/catkin_ws/src/unitree_ros/unitree_gazebo/launch \
-  -v /home/sense/ros_docker/unitree_ros/unitree_gazebo/worlds:/home/rosuser/catkin_ws/src/unitree_ros/unitree_gazebo/worlds \
+  -v /home/sense/ros_docker/z1_aruco:/home/rosuser/catkin_ws/src/z1_aruco \
   ros-z1 bash
 
 # Mount as read-only (container cannot write back to host)
@@ -117,6 +116,71 @@ docker run -it --rm \
 
 > Install nvidia-container-toolkit once on the host:
 > `sudo apt-get install nvidia-container-toolkit && sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`
+
+---
+
+## USB Device Passthrough (RealSense D435)
+
+The D435 is a USB device. Docker does not expose USB devices by default.
+
+**Host prerequisite — udev rules (run once):**
+
+The Intel RealSense apt repo does not support Ubuntu 24 (Noble). Install the udev rules
+directly from upstream instead:
+
+```bash
+sudo curl -fsSL https://raw.githubusercontent.com/IntelRealSense/librealsense/master/config/99-realsense-libusb.rules \
+  -o /etc/udev/rules.d/99-realsense-libusb.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+Unplug and replug the D435. Verify it is visible on the host:
+
+```bash
+lsusb | grep RealSense
+# expected: Bus 00X Device 00X: ID 8086:0b07 Intel Corp. RealSense D435
+```
+
+**Pass the D435 USB bus into the container:**
+
+First find the bus number:
+
+```bash
+lsusb | grep RealSense
+# example: Bus 004 Device 003: ID 8086:0b07 Intel Corp. RealSense D435
+```
+
+Then pass only that bus (cleaner than exposing all buses):
+
+```bash
+docker run -it --rm \
+  --name ros-z1-real \
+  -e DISPLAY=$DISPLAY \
+  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  --device /dev/bus/usb/004:/dev/bus/usb/004 \
+  ros-z1-aruco-real bash
+```
+
+If the bus number changes after a replug, recheck with `lsusb` and update the path.
+
+If the driver logs `RS2_USB_STATUS_ACCESS`, the udev rules have not taken effect.
+Unplug and replug the D435 after reloading rules. As a fallback, use `--privileged`:
+
+```bash
+# Fallback — full device access (workshop / dev use only)
+docker run -it --rm \
+  --name ros-z1-real \
+  -e DISPLAY=$DISPLAY \
+  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  --privileged \
+  ros-z1-aruco-real bash
+```
+
+Verify the camera is visible inside the container:
+
+```bash
+docker exec -it ros-z1 bash -c "rs-enumerate-devices | grep -A3 D435"
+```
 
 ---
 
